@@ -1,0 +1,46 @@
+1) Coordinate space
+• Model View -> World view -> Camera view -> Viewport -> screen
+• Scale / Rotate / Translate (TSR)
+• Pos_camera x,y,z = M_view * M_model * Pos_object x,y,z
+• NDC: divide the clip coordinate by w, called perspective division. Same as window (screen) coordinate but not translated and scaled to screen pixel
+• Object coord...modelView-> eye coord
+• Eye coord ...projection -> clip coord
+• ndc(x,y,z) = clip(x,y,z)/w_clip
+• NDC (-1.0~1.0) are scaled and translated by viewport params -> window coord
+
+2) Pipeline
+• Vertex array/buffer object
+• Vertex shader: takes position and associated colour data, transforms position by 4x4 matrix ..output transformed position and color
+• Primitive assembly
+• Rasterization
+• Fragment shader
+• Per-Fragment operation
+• Framebuffer
+
+3) camera
+• App must move the scene with inverse of camera transformation by placing it on the Modelview matrix
+• Up vector (0,1,0), if camera is rotated by 45° right.. new up (1,1,0)
+• Given current ModelView matrix, how to determine object-space location of camera => camera (0,0,0,1) multiply with inverse of ModelView
+
+4) EGL Windowing
+• Provides cross platform interaction between openGL and native windowing; context management, surface Binding, render surface sync
+• Make current (display, context, surface)
+• Display: is just a connection to native windowing system
+• Context: internal state machine (viewport, depth-range, clear colour, texture, vbo, fbo..)
+• Surface: extends native window or pixmap with additional auxiliary buffer
+• pBuffer can take full advantage of any hw acceleration available on openGLES, used to generate texture maps.. used in rendering offscreen surface and use it as a texture in another API (openVG)
+• FBO: render to texture
+• eglMakeCurrent: binds context to current rendering thread and to the draw and read surfaces
+• Binding same context in 2 threads not allowed
+• Shared context:
+• eglSwapBuffer: pixel buffer => nothing to do; double buffered surface => swap buffers... implicit synchronization .. before swapping driver blocks current thread to wait for all pending glDraw* commands
+• Driver try to send GL command to GPU as soon as possible for best performance but commands not immediately executed by GPU..they are just added to queue inside GPU
+• GPU queue might be full so driver has to keep those commands in command buffer of current context
+• glFlush: blocks current thread until all commands are sent to GPU
+• glFinish: more powerful, wait until all GL commands executed by GPU...explicit synchronization
+• In case of single buffer surface, glFlush is a must else command will never sent to GPU
+5) Primitive, buffer, rasterization
+
+6) difference between fixed/programmable pipeline
+• Fixed: GPU not controllable, methods built-in in hardware; little faster for lightim/
+6) 
