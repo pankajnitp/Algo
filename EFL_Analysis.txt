@@ -1,0 +1,336 @@
+9th Apr
+**************
+1) DALi scene graph restructure for vulkan performance
+• Render queue creation optimize
+• Scene graph traversal and render queue push in order
+• Either use above static render queue and assign chunks for different thread
+• Or traverse scene graph to check non overlapping rects and assign them different threads
+
+2) Render sequence in EFL
+• App calling show for client side render
+• EFL in render internal flow does update + draw
+• If ecore_evas is hidden then only update
+• EglSwapBuffers or WithDamage call
+• SoC -> Tbm tpl layer -> wl_surface_damage, this damage will be used as partial rect update for current Wayland surface for server side composition
+• SoC was having some issue in switching swapBufferWithDamage to swapBuffers
+• Previously used region from tbm_surface was in use
+• Client sends wl_buffer(tbm_surface) to E20 on every wl_surface_commit so E20 gets single tbm_surface of client
+• As window manager policy every client buffer will be of screen resolution
+• Evas_engine does eglSwapBuffer and Egl/gl finishes rendering , E20 can know about this through tbm_surface_queue interface
+• Enlightenment uses tbm_surface as eglImage in eglCreateImage and uses tbm_surface from tbm_surface_queue as mali colour buffer
+•
+
+3) Wayland window
+• EFL not aware about Wayland window
+• Ecore_evas_show to enable win
+• Ecore_evas_hide to hide
+
+4) Animation flow
+• Animator frametime set
+• Animator timeline add (duration, funcCb)
+• Ecore timer add => fires timer expired call back single time
+• Edje animation
+• Playing on signals :
+• Elementary animation : elm_transit create, transit effect
+
+5) elm config file
+• Item.cfg was monitored
+• Other process gets notification via file monitor callback(Linux call??)
+• Process1 changes config and Item.cfg changes
+• Process2 gets notice and starts reading updated config file, if any other process changes config here then process2 will throw SIGBUS error coz file was in read mode and file got unmapped
+
+6) Button press and focus movement
+• ?.?####$$$$
+
+7) elm win add bootup performance
+• 2 kind of delays, wl_display_dispatch and engine_setup
+• Wl_display_dispatch delay was coming bcoz wm_ready was happening late and it was bcoz enlightenment server was creating DRM_engine late
+
+8) Portrait mode
+• Handle window rotation and output transform separately
+• _rotation_do() calls engine_info_rotation_set() -> wl_surface_buffer_transformation set
+• Edc file handles portrait mode dimensions
+
+9) Redundant frame ch-list
+• Animation script running
+• Ecore_timer_expired_timer_call
+• Embryo program run
+• _edje_recalc
+
+10) git operations
+• git branch -a
+• git am #patch
+• git diff / status / show #commit
+• git add #files
+
+11) Ecore_main loop internal
+• Wake up - IDLE Exiter
+• Process timeout - TIMER/ANIMATOR
+• Process event - EVENT HANDLER
+• Process jobs - JOB
+• Go to sleep - IDLE ENTERER (Evas renderers updates)
+
+• Expired timer calls
+• Signal -> events
+• Idle_enterer , ecore_evas_wl_common_render -> render updates
+_e_comp_screen_commit_idle_cb
+• FD handler call
+• Ecore_event_call(): ecore_event_handler_add(), event_type, callback, data
+• Idle_exiter
+
+12) Image file processing in EFL
+•
+13) Flexible UI EFL - multi form factor
+• Relative position
+• Elm_config scale set
+• Using weight /align property
+• Grid/Box: grid container does relative layouting, child UI will be resized based on screen size
+• EDC option:
+• Scalable support EFL (read on net)
+
+14) Key event handling
+• _ecore_event_call from main_loop
+
+
+15) policy_wl_activate
+• For iconified mode
+• Display last rendered frame
+• App should first commit and then activate
+• Idler call back can be used
+
+10th April
+****************************
+1) EFL errors
+• Timer etc, add outside main:
+• Not pointing to valid obj: obj deleted
+• Magic check fails :
+• Wrong parent param:
+• Couldn't swallow:
+
+2) compile options - buffer overflow
+• Stack protector : -fstack-protector-strong, a canary is loaded and saved in Stack, later this is verified against original, if doesn't match __stack_chk_fail
+• RELRO: RELocation Read Only, memory corruption mitigation technique, harden ELF internal data section (.got, .dtors) precede the program's data section (.data, .bss)
+• Fortify: secure string methods, -D-FORTIFY_SOURCE=2, gcc automatically calls _strcpy_chk()
+• PIE: -fPIE position independent executable, supports address space layout randomization in exe, before PIE exe can't be placed at random address in memory, dynamic linker does full relocation on program modules
+3) GOT vs PLT sections
+• Dynamic linking, relocation
+• Link time no resolution, PIC
+• Layer of indirection, Global offset table; for external variables, loading of dynamic .so can be independent
+• PLT procedure linkage table for calling external functions
+• Lazy binding,
+• LD_PRELOAD, dynamic linker will prefer this path for resolution
+• For same shared lib, GOT and PLT will be different in different processes but code will be same
+
+4) COW (saving memory)
+• Everyone share same copy until modification is required
+• Fork vs vfork (child share data and code section of parent until change is required) hence vfork is faster
+• Garbage collector
+
+11th April
+*************************
+1) elm_aux_hint_add and visibility callback
+• ?
+
+2) how visibility,changed event comes from WM?
+• ECORE_WL...WINDOW_VISIBILITY_CHANGE event handler is registered by receiver
+• Registered callback is called, in ecore_evas case _elm_win_state_change() is called
+• evas_object_smart_callback_call() with SIG_VISIBILITY_CHANGE
+• SIG_VISIBILITY_CHANGE is internal to EFL "visibility,changed"
+
+12th April
+**************************
+1) EO methodology : Object system in C
+• EO base class
+• Timers, Animators, Evas object, Edje (inherited from evas), elementary (inherited from Evas & Edje)
+• Call safety / object access safety / binding generation
+• Single / multiple inheritance with overrides
+• Event callback
+• Parent / child tree
+• Key-value attachment to all object
+• Similar to GObject: base class more extensive, object handle indirection scheme for safety, but GLib world was not needed
+• Object reference safety: in general most obj are pointers; EO hides pointer and use indirection
+• First approach : First 4 bytes to check magic no, if invalid then it will lead to crash
+• Next approach: mmaped anonymous memory away from heap (minimize corruption) also supports mprotect for read only
+1. Generation count (c) if b != NULL
+2. Table number (a)
+3. Row number (b)
+• Eo is not a pointer, only used for compatibility: On 32 bit 9 bit for generation, 1 in 512 chances of false positives; On 64 bit, 29bit for generation, 1 in 500 million chances
+• Runtime dynamic method lookup: all methods are batches to save object lookup cost
+• If the object doesn't support that interface/class the call is returned into a co-op and safely returns
+
+2) 24bit/ 32bit window : TBD$$$$$
+
+3) Hole for Video output
+• If App is of 32 bit, E20 will create hole
+• If App is of 24 bit, App has responsibility to create hole
+• Apply color for hole object to debug
+• Comp mode or HW composition mode
+
+4) linker in detail
+• Program linker; code-> assembly-> obj -> .so/exe; creates GOT and PLT
+• Dynamic linker: runs when program starts
+• Symbol table created by compiler and used by debugger ; linker should know and avoid debug info
+
+5) Signal handler in ecore
+• _ecore_signal_callback_set
+• Ecore main loop: signal to event
+• _ecore_event_call; if no event handler is set for EXIT then default is handled like; ecore_main_loop_quit
+• Elementary Apps: _elm_signal_exit
+• DALi Apps: either EXIT handler or default main_loop_quit
+
+13th April
+**********************
+1) why waiting on select()
+• Select() waits for I/O, won't return until
+1. any one of FD is ready
+2. Call interrupted by signal handler
+3. Timeout expires
+• pselect() doesn't wait
+
+2) why SIGTERM breaks at select?
+• If process waiting on select() and signal comes, Interrupt will cause to return from select() with -1 and error IENTR
+• To avoid race condition
+• Signal handler can be called after here
+•
+3) when GC invokes for CoW?
+
+4) difference between EFL 4.0 to 5.0
+• Ecore DRM setting of planes
+•
+
+5) Animation calculation in 2.4 vs 3.0?
+• Animation jerky because some delay due to IPC
+
+1st May
+********************************
+1) Frame callback
+• wl_surface_frame() can help in getting frame callback
+• wl_callback_add_listener()
+• Frame callback will be generated after wl_surface_commit() which is done after show/hide/outbuf_flush
+• Ecore_wl_window has wl_surface and same surface is registered for frame callback
+• In 5.0 a direct method provided window_frame_callback_add()
+
+2) Scene graph (Evas)
+• Track state of all display objects
+• Position, size, visibility, colour etc
+• Loading fonts, images, glyph, scaling fading etc
+• If changes obscured NOP
+• Parent/child relation
+• Input direction and event callbacks
+• Text formatting and layout
+
+3) what is elementary?
+• Widget set built on lower level EFL
+• Pre-made common widget most application need
+• Touch friendly design
+• Adjust for input resolution
+
+4) wl_surface and wl_buffer op
+• Wl_surface_attach(surf, buff)
+• Wl_surface_commit(surf) this will display buffer for that surface
+• Compositor owns that buffer so stop drawing on that until wl_buffer.release event comes
+• Sync paint clock to the compositor repaint loop with wl_surface_frame
+
+2nd May
+******************************
+1) ecore_wayland
+Wrapper and convenience function for using Wayland protocol in implementing window system
+• Init / shutdown
+• Display
+• Synchronization
+1. Ecore_wl_flush() sends all wl commands to wl display
+2. Ecore_wl_sync() flushes command buffer and waits until processed by server
+• Window functions
+• Dealing with Inputs
+• Drag n drop
+• Manipulating subsurface
+
+2) wl_buffer vs tbm_surface
+Wl_buffer wraps tbm_surface, tmb_surface contains gem name and prime FD, for creating dri image we need to extract tbm_surface from wl_buffer and use tpl_display_get_buffer_feom_native_pixmap()
+
+3) TDM (Display manager)
+• Display device abstraction interface for display server to allow direct access to graphics hardware in safe and efficient manner as display HAL
+• Primary goal is unification of display hardware management procedures in user space
+• Need - because diff vendors provide diff user level interface for display devices
+
+4) Wayland-tbm
+• Protocol for graphics memory management
+• Provide library for sharing tbm_surfaces between client and server (similar as wayland_drm)
+
+5) significance of Engine data (Evas_gl_image)
+• Evas_image_data has engine_data which is a handle to raw buffer
+• Efl_file_set -> _efl_file_file_set -> _evas_image_mmap_set
+• Engine_data will have pointer to mapped memory
+• In case of image orientation/rotation change - Engine_data is treated as Evas_gl_image, another Evas_gl_image is created and copied RGBA_image data and then change orientation of new glImage
+
+6) object tree
+• Ecore_evas_list_get static ecore_evases
+• Find first focused ecore_evas
+• Fetch Evas from each ecore_evas ecore_evas_get(ee)
+• Fetch evas_objects in that Evas evas_object_in_rectangle()
+
+3rd May
+***********************
+1) callback method pointing to unloaded lib, how to investigate it?
+• Before unloading callback must be unregistered
+
+2) EO inheritance and vtable entries
+
+3) elm_access issues and checkpoints
+• Issues
+1. Not stopping with NULL string
+2. Sync issue with screen-reader
+3. Voice touch selection
+• Checkpoints
+1. Elm_access_say
+2. Out_read
+3. Elm_access_voice_guide
+4. Access_output_tts
+
+4th May
+**********************
+1) Buffer related API flow on App
+1. Evas wayland-egl backend ... wl_egl_window_create
+2. GLES/EGL .. eglCreateaWindowSirface,
+3. Tpl-egl/ Wayland backend, wayland_tbm_client_init
+4. Gles/EGL.. eglSwapBuffers
+5. Vendor DDK mali, get_Wondow_target_buffer, tpl_surface_dequeue_buffer()
+6. Tpl-egl/ wl_backend , tbm_surface_queue_dequeue
+7. 5-> create_color_buffer, display_window_buffer(), tpl_surface_enqueue_buffer
+8. Tpl-egl/ wl_backend.. tbm_surface_queue_enqueue(), tbm_surface_queue_acquire
+9. Enlightenment.. wl_buffer_send_release()
+10. Tpl-egl .. buffer_release_cb
+
+2) buffer related flow E20 side
+• Evas gl drm backend create surface
+• Egl/ gles eglSurfaceCreate
+• E_comp_wl_tbm_init, wl_tbm_server_init
+• Tbm_surface from wayland_tbm protocol, native_surface_set, eglCreateImage
+• Vendor DDK, getNativeBuffer(), tpl_get_buffer_from_native_pixmap, createColorBuffer, TPL EGL GBM backend, wayland_tbm_server_get_surface
+• EglSwapBuffers, glRender
+• Vendor DDK mali, get_window_target_buffer(), tol_surface_dequeue_buffer(), createColorBuffer(), tbm_surfqce_queue_dequeue()
+• Display_Window_buffer(), tpl_surface_enqueue_buffer(), tbm_surface_queue_enqueue()
+
+7th May
+******************
+1) how different engines set in client server?
+• Environment variables ELM_DISPLAY, ELM_ACCEL, ELM_ENGINE
+• HAVE_ELEMENTARY_WAYLAND DRM
+• Engine type is required in elm_window_finalize_internal
+
+9th May
+***********************
+1) COW processing (user perspective)
+• Eina_cow* COW_REF is created with some default structure values, eina_cow_add(name, size, &structure_obj, gc)
+• When other structure pointers (cow_new*) are defined like eina_cow_alloc(COW_REF) then no copy is made, simply same old structure_obj* is returned
+• When write = eina_cow_write(COW_REF, &cow_new) is called, a copy is made and write will be pointing to new structure_obj
+• Changes done in write field
+• Finally eina_cow_done(COW_REF, cow_new, write, gc_flag) is called and write structure field will be saved as cow_new's default_value
+• For another structure * new2 eina_cow_memcpy(COW_REF, &new2, cow_new), cow_ptr is fetched for cow_new and reference count is increased, eina_cow_free(COW_REF, new2) this will decrease ref_count and destroy if it is 0, finally new2 will point to cow_new
+
+10th May
+*******************
+1) Input flow in tizen
+
+2) EO entry 
+
